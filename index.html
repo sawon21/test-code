@@ -373,93 +373,112 @@ domReady(function () {
 
 document.getElementById("download-absent-pdf").onclick = function () {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    const date = new Date();
-    const formattedDate = `${date.getDate().toString().padStart(2, '0')}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getFullYear()}`;
-    
-    // Sample students data (use your actual data here)
-    const students = [
-        { name: "John Doe", roll: "101", department: "Science" },
-        { name: "Jane Smith", roll: "102", department: "Arts" },
-        { name: "Tom White", roll: "103", department: "Commerce" },
-        // Add more student objects here...
-    ];
-    
-    // Split students into two columns (left and right)
-    const leftColumnData = students.slice(0, Math.ceil(students.length / 2));
-    const rightColumnData = students.slice(Math.ceil(students.length / 2));
-    
-    // Define the table columns
-    const columns = [
-        { header: "Serial No.", dataKey: "serial" },
-        { header: "Name", dataKey: "name" },
-        { header: "Roll", dataKey: "roll" },
-        { header: "Department", dataKey: "department" }
-    ];
+    const doc = new jsPDF('p', 'mm', 'a4'); // Portrait orientation, millimeters, A4 size
+    const pageHeight = 297; // A4 page height in mm
+    const pageWidth = 210;  // A4 page width in mm
 
-    // Prepare data for left column
-    const leftTableData = leftColumnData.map((student, index) => ({
-        serial: index + 1,
-        name: student.name,
-        roll: student.roll,
-        department: student.department
-    }));
-
-    // Prepare data for right column
-    const rightTableData = rightColumnData.map((student, index) => ({
-        serial: index + leftColumnData.length + 1,
-        name: student.name,
-        roll: student.roll,
-        department: student.department
-    }));
-
-    // Add a header to the PDF
-    doc.setFontSize(16);
-    doc.setTextColor(0, 0, 255);
-    doc.text("Absent Students List", 105, 20, null, null, "center");
-
-    // Add date to the PDF
+    // Font and color settings
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
-    doc.setTextColor(0, 0, 0);
-    doc.text(`Date: ${formattedDate}`, 10, 30);
 
-    // Add left table (first column)
-    doc.autoTable({
-        head: [columns],
-        body: leftTableData,
-        startY: 40,
-        theme: 'grid',
-        styles: { fontSize: 10, halign: 'center', textColor: 'blue' },
-        columnStyles: {
-            0: { halign: 'center' }, // Serial No.
-            1: { halign: 'left' },   // Name
-            2: { halign: 'center' }, // Roll
-            3: { halign: 'center' }  // Department
-        },
-        tableWidth: 90,  // Width for left table
-        margin: { left: 10 }  // Left margin
-    });
+    // Date format function (dd-mm-yyyy)
+    function formatDate(date) {
+        const d = date.getDate().toString().padStart(2, '0');
+        const m = (date.getMonth() + 1).toString().padStart(2, '0');
+        const y = date.getFullYear();
+        return `${d}-${m}-${y}`;
+    }
 
-    // Add right table (second column)
-    doc.autoTable({
-        head: [columns],
-        body: rightTableData,
-        startY: 40,
-        theme: 'grid',
-        styles: { fontSize: 10, halign: 'center', textColor: 'green' },
-        columnStyles: {
-            0: { halign: 'center' }, // Serial No.
-            1: { halign: 'left' },   // Name
-            2: { halign: 'center' }, // Roll
-            3: { halign: 'center' }  // Department
-        },
-        tableWidth: 90,  // Width for right table
-        margin: { left: 110 }  // Left margin for second column
-    });
+    // Fetch absent students
+    const absentStudents = students.filter(student => !isStudentAlreadyPresent(student.id));
 
-    // Save the PDF
-    doc.save(`${formattedDate}-absent-students-list.pdf`);
+    // Limit to 50 students per page
+    const studentsPerPage = 50;
+    let totalPages = Math.ceil(absentStudents.length / studentsPerPage);
+
+    // Function to add the header
+    function addHeader(doc, pageNum, totalPages) {
+        doc.setFillColor(22, 160, 133);  // Header background color
+        doc.rect(0, 10, pageWidth, 20, 'F'); // Header filled rectangle
+
+        doc.setTextColor(255, 255, 255); // White text
+        doc.setFontSize(16);
+        doc.text("Logic University", pageWidth / 2, 25, null, null, "center");
+
+        doc.setFontSize(12);
+        doc.text("Medical & Nursing Admission Private Program", pageWidth / 2, 33, null, null, "center");
+
+        doc.setFontSize(10);
+        doc.text(`Absent Students List (${formatDate(new Date())})`, pageWidth / 2, 40, null, null, "center");
+
+        // Page number
+        doc.setTextColor(0, 0, 0);
+        doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - 30, pageHeight - 10);
+    }
+
+    // Function to add the table header
+    function addTableHeader(doc, startY) {
+        const headers = ["Serial No.", "Name", "Roll", "Department"];
+        const headerXPositions = [10, 30, 80, 130];
+
+        doc.setFillColor(41, 128, 185);  // Table header background color
+        doc.setTextColor(255, 255, 255);  // White text
+        doc.rect(10, startY - 5, 190, 10, 'F');  // Filled background for the table header
+
+        doc.setFontSize(10);
+        headers.forEach((header, i) => {
+            doc.text(header, headerXPositions[i], startY);
+        });
+    }
+
+    // Function to add table rows (up to 50 students per page)
+    function addTableRows(doc, students, pageNum, startY) {
+        let y = startY + 10;
+        const maxRows = studentsPerPage;
+        const rowHeight = 10;
+
+        students.forEach((student, index) => {
+            if (index >= maxRows * (pageNum - 1) && index < maxRows * pageNum) {
+                const rowColor = index % 2 === 0 ? [236, 240, 241] : [255, 255, 255];  // Alternate row color
+                doc.setFillColor(...rowColor);
+                doc.rect(10, y - 5, 190, rowHeight, 'F');  // Draw filled rectangle for each row
+
+                doc.setTextColor(0, 0, 0);  // Reset to black text color for content
+                doc.text((index + 1).toString(), 10, y);
+                doc.text(student.name, 30, y);
+                doc.text(student.roll, 80, y);
+                doc.text(student.department, 130, y);
+                y += rowHeight;
+            }
+        });
+    }
+
+    // Loop through pages and add content
+    for (let page = 1; page <= totalPages; page++) {
+        if (page > 1) {
+            doc.addPage();  // Add new page if not the first
+        }
+
+        addHeader(doc, page, totalPages);
+        addTableHeader(doc, 60);
+        addTableRows(doc, absentStudents, page, 70);
+    }
+
+    // Footer with system info
+    doc.setFillColor(52, 73, 94);  // Footer background color
+    doc.rect(0, pageHeight - 10, pageWidth, 10, 'F');  // Footer filled rectangle
+    doc.setTextColor(255, 255, 255);  // White text for footer
+    doc.setFontSize(8);
+    doc.text("Generated by Logic University Attendance System", pageWidth / 2, pageHeight - 3, null, null, "center");
+
+    // Save the styled PDF with date-based filename
+    doc.save(`${formatDate(new Date())}-absent-students-list.pdf`);
 };
+
+// Function to check if a student is already marked present
+function isStudentAlreadyPresent(id) {
+    return attendance.some(entry => entry.id === id);
+}
     </script>
 </body>
 </html>
